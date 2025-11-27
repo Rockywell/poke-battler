@@ -1,0 +1,348 @@
+/* Basic reset */
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+:root {
+    --color-primary: rgb(239, 9, 9);
+    --color-secondary: #222;
+
+    --color-background: #e8e8e8;
+}
+
+@keyframes attack {
+    50% {
+        transform: scaleX(1) rotate(0deg);
+        margin-right: 500px;
+    }
+
+    65% {
+        /* transform: scaleX(1) rotate(0deg); */
+        margin-right: 500px;
+    }
+
+    70% {
+        margin-right: 600px;
+        transform: scaleX(1.15) rotate(-30deg);
+    }
+}
+
+@keyframes hit {
+    25% {
+        transform: scaleX(1) rotate(0deg);
+        filter: none
+    }
+
+    50% {
+        transform: scaleX(1.1) rotate(20deg);
+        margin-left: 150px;
+        filter: brightness(0) saturate(100%) invert(16%) sepia(89%) saturate(7000%) hue-rotate(1deg) brightness(80%) contrast(118%);
+    }
+
+    55% {
+        filter: none
+    }
+
+    65% {
+        /* filter: brightness(2) saturate(0%); */
+        transform: scaleX(1) rotate(30deg);
+    }
+}
+
+.attack {
+    animation: attack 0.7s linear 0.2s 1 forwards;
+}
+
+.hit {
+    animation: hit 0.5s linear 0.7s 1 forwards;
+}
+
+
+
+body {
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: var(--color-primary);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+}
+
+.page {
+    position: relative;
+    width: 100%;
+    max-width: 900px;
+    background: #ffffff;
+    border-radius: 8px;
+    border: 7px solid var(--color-secondary);
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.12);
+    padding: 32px 32px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+
+    &::before {
+        content: "";
+        position: absolute;
+        inset: 0 0 auto;
+        height: 55px;
+        background: linear-gradient(90deg, #c62828, #ef5350);
+        box-shadow: 0 6px 14px rgba(0, 0, 0, 0.25);
+        z-index: 0;
+    }
+
+    &::after {
+        content: "";
+        position: absolute;
+        top: 16px;
+        left: 22px;
+        width: 26px;
+        height: 26px;
+        border-radius: 50%;
+        background: radial-gradient(circle at 30% 30%, #ffffff 0, #ffffff 40%, #bbdefb 65%, #90caf9 100%);
+        box-shadow: 0 0 0 4px #eceff1, 0 0 0 7px #263238, 0 0 12px rgba(255, 255, 255, 0.9);
+        z-index: 1;
+    }
+}
+
+/* Header */
+.page-header {
+    z-index: 100;
+    text-align: center;
+    /* border-bottom: 1px solid #d0d0d0; */
+    padding-bottom: 8px;
+
+    h1 {
+        color: white;
+        margin-top: -3%;
+        font-size: 2rem;
+    }
+}
+
+/* Main card */
+.main-card {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+/* Battle area */
+.battle-area {
+    border: 1px solid #d0d0d0;
+    border-radius: 32px;
+    padding: 20px 24px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    background: #fafafa;
+}
+
+.battle-header {
+    display: flex;
+    justify-content: flex-start;
+}
+
+.weather {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.9rem;
+    color: #555;
+}
+
+.weather-icon {
+    font-size: 1.2rem;
+}
+
+.pokemon-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+}
+
+
+/* Diagonal Pokemon */
+/* .pokemon-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto auto;
+     gap: 5px;
+}
+
+.pokemon-row .pokemon-card:nth-child(1) {
+    grid-column: 1;
+    grid-row: 2;
+}
+
+.pokemon-row .pokemon-card:nth-child(2) {
+    grid-column: 2;
+    grid-row: 1;
+} */
+
+.pokemon-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    text-align: center;
+}
+
+.pokemon-title {
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+/* Sprite box */
+.sprite-box {
+    width: 170px;
+    height: 170px;
+    border: 2px solid #c5c5c5;
+    border-radius: 6px;
+    position: relative;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+/* 
+.sprite-box::before,
+.sprite-box::after {
+    content: "";
+    position: absolute;
+    width: 2px;
+    height: 100%;
+    background: #d0d0d0;
+}
+
+.sprite-box::after {
+    width: 100%;
+    height: 2px;
+} */
+
+.sprite-placeholder {
+    font-size: 0.9rem;
+    color: #999;
+}
+
+/* Sprite shadow */
+.sprite-shadow {
+    margin-top: 4px;
+    padding: 4px 16px;
+    min-width: 140px;
+    border-radius: 999px;
+    background: #555;
+    color: #fff;
+    font-size: 0.85rem;
+    text-align: center;
+}
+
+/* HP bar */
+.stats-wrapper {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    align-items: center;
+}
+
+.level-label {
+    font-size: 0.9rem;
+    color: #666;
+}
+
+.hp-label {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 0.85rem;
+    color: black;
+}
+
+.hp-bar {
+    position: relative;
+    width: 150px;
+    height: 15px;
+    border-radius: 999px;
+    background: #e0e0e0;
+    overflow: hidden;
+}
+
+.hp-fill {
+    width: 100%;
+    /* set with JS later */
+    height: 100%;
+    background: #6bcf63;
+}
+
+/* Moves area */
+.moves-area {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px 24px;
+}
+
+.move-tile {
+    border-radius: 24px;
+    border: 1px solid #d0d0d0;
+    background: #f7f7f7;
+    font-size: 1rem;
+    padding: 20px 24px;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+
+    &:hover {
+        background: #ececec;
+        transform: translateY(-1px);
+    }
+
+    span {
+        font-size: large;
+    }
+
+    p {
+        color: grey;
+    }
+}
+
+/* Reset */
+.reset-row {
+    display: flex;
+    justify-content: center;
+}
+
+.reset-btn {
+    padding: 8px 22px;
+    border-radius: 999px;
+    border: 1px solid #bfbfbf;
+    background: #f3f3f3;
+    cursor: pointer;
+    font-size: 0.95rem;
+
+    &:hover {
+        background: #e5e5e5;
+    }
+}
+
+/* Footer */
+.page-footer {
+    text-align: center;
+    padding-top: 8px;
+    font-weight: 500;
+    font-size: 1.1rem;
+    border-top: 1px solid #d0d0d0;
+}
+
+/* special classes */
+
+.mirror-x {
+    transform: scaleX(-1);
+}
+
+.mirror-y {
+    transform: scaleY(-1);
+}

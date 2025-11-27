@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Poke Battler</title>
+    <link rel="stylesheet" href="./css/style.css" />
+    <script src="./js/main.js" type="module"></script>
+</head>
+
+<body>
+    <div class="page">
+        <header class="page-header">
+            <h1>Pokédex Simulation</h1>
+        </header>
+
+        <main class="main-card">
+            <!-- Battle Area -->
+            <section class="battle-area">
+                <div class="battle-header">
+                    <div class="weather">
+                        <div class="weather-icon">☀️</div>
+                        <span class="weather-label">Weather Icon</span>
+                    </div>
+                </div>
+
+                <div class="pokemon-row">
+                    <!-- Your Pokemon -->
+                    <div class="pokemon-card player-pokemon">
+                        <h2 class="pokemon-title">Your Pokemon</h2>
+                        <div class="sprite-box">
+                            <span class="sprite-placeholder mirror-x">Sprite</span>
+                        </div>
+                        <!-- <div class="sprite-shadow">Sprite Shadow</div> -->
+                        <div class="hp-wrapper">
+                            <span class="level-label">Lv: </span>
+                            <div class="hp-bar">
+                                <span class="hp-label">HP Bar</span>
+                                <div class="hp-fill"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Opponent Pokemon -->
+                    <div class="pokemon-card computer-pokemon">
+                        <h2 class="pokemon-title">Opponent Pokemon</h2>
+                        <div class="sprite-box">
+                            <span class="sprite-placeholder">Sprite</span>
+                        </div>
+                        <!-- <div class="sprite-shadow">Sprite Shadow</div> -->
+                        <div class="hp-wrapper">
+                            <span class="level-label">Lv: </span>
+                            <div class="hp-bar">
+                                <span class="hp-label">HP Bar</span>
+                                <div class="hp-fill"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Moves -->
+            <section class="moves-area">
+                <button class="move-tile">Move 1</button>
+                <button class="move-tile">Move 2</button>
+                <button class="move-tile">Move 3</button>
+                <button class="move-tile">Move 4</button>
+            </section>
+
+            <!-- Reset -->
+            <div class="reset-row">
+                <button class="reset-btn">Reset Button</button>
+            </div>
+        </main>
+
+        <footer class="page-footer">
+            Footer
+        </footer>
+    </div>
+</body>
+
+</html>

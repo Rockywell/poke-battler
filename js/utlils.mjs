@@ -1,5 +1,20 @@
 // import ShoppingCart from "./ShoppingCart.mjs";
 
+//Callback Functions
+
+//Delays execution of a process.
+export function delay(ms, callback) {
+    if (typeof callback === "function") {
+        // callback style
+        return setTimeout(callback, ms);
+    }
+
+    // promise/await style
+    return new Promise(resolve => {
+        setTimeout(resolve, ms);
+    });
+}
+
 //HTML Functions
 
 // wrapper for querySelector...returns matching element
@@ -145,7 +160,7 @@ export const capFirst = s => s && s[0].toUpperCase() + s.slice(1);
 
 //Mathematical Functions
 
-export function clamp(value, min, max) {
+export function clamp(value, min = 0, max = Number.MAX_SAFE_INTEGER) {
     return Math.min(max, Math.max(min, value));
 }
 

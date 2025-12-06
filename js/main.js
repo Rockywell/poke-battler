@@ -1,7 +1,7 @@
-import Pokemon from "./pokemon.mjs";
-import PokemonTrainer from "./pokemonTrainer.mjs";
-import BattleUI from "./battle-ui.mjs";
-import BattleController from "./battle-controller.mjs";
+import Pokemon from "./Pokemon.mjs";
+import PokemonTrainer from "./PokemonTrainer.mjs";
+import BattleUI from "./BattleUI.mjs";
+import BattleController from "./BattleController.mjs";
 
 let player = new PokemonTrainer(
     "Red",
@@ -14,22 +14,18 @@ let player = new PokemonTrainer(
 let opponent = new PokemonTrainer(
     "Gary",
     [
-        new Pokemon("Arceus", { level: 80, shiny: true })
+        new Pokemon("Arceus", { level: 70, shiny: true }),
+        new Pokemon("Onix", { level: 80, shiny: true })
     ]
 );
 
 let trainers = Promise.all([player.init(), opponent.init()]);
-
-// console.table(player.activePokemon.getMoveSummary());
-// console.table(opponent.activePokemon.getMoveSummary());
 
 const ui = new BattleUI(
     document.querySelector(".main-card"),
     player,
     opponent
 );
-
-console.log(ui);
 
 const controller = new BattleController(
     player,
@@ -39,3 +35,7 @@ const controller = new BattleController(
 
 await trainers;
 controller.init();
+
+console.log(ui);
+
+console.table(player.activePokemon.moves);

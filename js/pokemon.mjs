@@ -1,42 +1,12 @@
-import PokeApi from "./poke-api.mjs";
-import { getData, chance, clamp } from "./utlils.mjs";
+import PokeApi from "./PokeApi.mjs";
+import Move from "./Move.mjs";
+import { getData } from "./utlils.mjs";
 import { IVManager, EVManager, statManager } from "./statManager.mjs";
 
-// , getLocalStorage, setLocalStorage, addLocalStorage
+// getLocalStorage, setLocalStorage, addLocalStorage
 
 export default class Pokemon {
     static api = "https://pokeapi.co/api/v2";
-
-    // Move Classes
-    static async getTypeEffectiveness(moveType, targetTypes) {
-        const dmg = (await PokeApi.getType(moveType)).damage_relations;
-
-        let multiplier = 1;
-
-        for (const targetType of targetTypes) {
-            if (dmg.no_damage_to.some(t => t.name === targetType)) {
-                multiplier *= 0;
-            } else if (dmg.double_damage_to.some(t => t.name === targetType)) {
-                multiplier *= 2;
-            } else if (dmg.half_damage_to.some(t => t.name === targetType)) {
-                multiplier *= 0.5;
-            }
-        }
-
-        return multiplier;
-    }
-
-    static getCritChance(move) {
-        // base stage 0 = 1/24
-        let stage = move.meta?.crit_rate ?? 0; // 0, 1, 2, ...
-
-        switch (stage) {
-            case 0: return 1 / 24;
-            case 1: return 1 / 8;
-            case 2: return 1 / 2;
-            default: return 1; // stage 3+: always crit
-        }
-    }
 
     static calculateNatureMultipliers({ increased_stat, decreased_stat }) {
         const mult = {
@@ -75,7 +45,9 @@ export default class Pokemon {
     id;
     types;
 
-    constructor(speciesName = "pikachu", { name, ability, level = 50, status = null, nature = "hardy", shiny = false, iv, ev } = {}) {
+    statusCounters = {};
+
+    constructor(speciesName = "pikachu", { name, ability, level = 50, status = "none", volatileStatuses = [], nature = "hardy", shiny = false, iv, ev } = {}) {
         this.speciesName = speciesName;
 
         // Overridable semi-dependent properties.
@@ -84,9 +56,11 @@ export default class Pokemon {
 
         // Overridable independent properties.
         this.level = level;
-        this.status = status;
         this.natureName = nature
         this.shiny = shiny;
+        this.status = status;
+        this.volatileStatuses = new Set(volatileStatuses);
+        // this.statusCounters
 
         this.nature = {
             hp: 1.0,       // HP is always 1.0 in real games too
@@ -113,8 +87,18 @@ export default class Pokemon {
             speed: 0
         }
 
+        // Stages that temporarily modify stats.
+        this.statStages = {
+            attack: 0,
+            defense: 0,
+            spAttack: 0,
+            spDefense: 0,
+            speed: 0,
+            evasion: 0
+        };
+
         // list of FULL move data (from move endpoint)
-        this.moves = new Array(4);
+        this.moves = new Array(4); //Set?
 
         Object.defineProperty(this.moves, 'length', {
             writable: false
@@ -171,34 +155,8 @@ export default class Pokemon {
     }
     /** Gen-V animated sprites if available */
     getAnimations() {
+        // https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/types/generation-viii/sword-shield/11.png
         return this.species.sprites.versions["generation-v"]["black-white"].animated ?? this.species.sprites;
-    }
-
-    /** Pick N random moves that actually have power + accuracy, then load full move data */
-    async loadRandomMoves(count = 4) {
-        // entries look like { move: { name, url }, version_group_details: [...] }
-        const all = this.species.moves;
-
-        // filter out weird moves with no power (most status moves)
-        const candidates = all;//.filter((entry) => !!entry.move.url);
-
-        // simple random shuffle [...candidates].
-        const shuffled = candidates.sort(() => Math.random() - 0.5);
-
-        const selected = shuffled.slice(0, count);
-
-        const moveDataPromises = selected.map((entry) =>
-            getData(entry.move.url)
-        );
-
-        const moveData = await Promise.all(moveDataPromises);
-
-
-        this.moves = moveData;
-        // keep only those that can actually “hit” something
-        // this.moves = moveData.filter(
-        //     (m) => m.power !== null && m.accuracy !== null
-        // );
     }
 
     /** Get a FULL move object (power, accuracy, type, etc.) by name */
@@ -206,107 +164,56 @@ export default class Pokemon {
         return this.moves.find((m) => m.name === name);
     }
 
-    // getMove(name) {
-    //     let moves = this.species.moves;
-    //     // console.log(moves);
-
-    //     let move = (moves.find(entry => entry.move.name == name)).move;
-
-
-    //     return getData(move.url);
-    // }
-
     /** For UI: list move names + some basic info */
     getMoveSummary() {
         return this.moves.map((m) => ({
             name: m.name,
-            type: m.type.name,
+            type: m.type,
             power: m.power,
             pp: m.pp,
             accuracy: m.accuracy,
-            damageClass: m.damage_class.name,
+            damageClass: m.damageClass,
         }));
     }
 
+    /** Pick N random moves that actually have power + accuracy, then load full move data */
+    async loadRandomMoves(count = 4) {
+        // entries look like { move: { name, url }, version_group_details: [...] }
+        const all = this.species.moves;
 
-    async calculateDamage(target, move, field = { weather: "sunny" }) {
-        const level = this.level;
-        const power = move.power;
-
-        const isPhysical = move.damage_class === "physical";
-
-        const attack = isPhysical
-            ? this.stats.attack
-            : this.stats.spAttack;
-
-        const defense = isPhysical
-            ? target.stats.defense
-            : target.stats.spDefense;
-
-        // 1. Base damage
-        // console.log("Lv:", level, "Pow:", power, "Atk:", attack, "Def:", defense);
-        let baseDamage = Math.floor(
-            Math.floor(
-                Math.floor((2 * level) / 5 + 2) * power * (attack / defense)
-            ) / 50
-        ) + 2;
-
-        // === Apply Modifiers ===
-
-        // For Future Implementation WIP
-        // 2. Target modifier (double battles)
-        // modifier *= move.targetsMultiple ? 0.75 : 1;
+        // simple random shuffle [...candidates].
+        const shuffled = [...all].sort(() => Math.random() - 0.5);
+        const selected = shuffled.slice(0, 10);//count
 
 
-        // 3. STAB
-        const stabModifier = this.types.includes(move.type.name)
-            ? 1.5
-            : 1
+        const moveDataPromises = selected.map((entry) =>
+            getData(entry.move.url)
+        );
+
+        let moveData = await Promise.all(moveDataPromises);
+
+        // Removes moves with completely unique behaviour
+        moveData = moveData.filter(
+            (m) => m.meta?.category?.name !== "unique" && m.meta?.category?.name !== "force-switch"
+        );
+        // keep only those that can actually “hit” something
+        // this.moves = moveData.filter(
+        //     (m) => m.power !== null && m.accuracy !== null
+        // );
+        // console.table(moveData.map(raw => ({ "New AND IMPROVED": raw.meta?.category?.name, "r": raw.meta })));
 
 
-        // 4. Burn
-        const isBurned = this.status == "burned";
-        const burnModifier = (isBurned && isPhysical && this.ability !== "guts")
-            ? 0.5
-            : 1
-
-
-        // 5. Weather
-        const weatherModifier = 1;
-        if (field.weather === "rain") {
-            if (move.type.name === "water") weatherModifier = 1.5;
-            if (move.type.name === "fire") weatherModifier = 0.5;
-        }
-        if (field.weather === "sun") {
-            if (move.type.name === "fire") weatherModifier = 1.5;
-            if (move.type.name === "water") weatherModifier = 0.5;
-        }
-
-
-        // 6. Critical hit
-        // Determines if the hit was critical.
-        const isCrit = chance(Pokemon.getCritChance(move));
-        const critModifier = isCrit
-            ? 1.5
-            : 1;
-
-        // 7. Random           0.85—1.00
-        const randomModifier = (85 + Math.floor(Math.random() * 16)) / 100;
-
-
-        // 8. Type effectiveness  e.g. 2, 0.5, 4, 0, etc.
-        const typeEffectiveness = await Pokemon.getTypeEffectiveness(move.type.name, target.types);
-
-
-        // 9. Other modifiers omitted for simplicity
-
-        const modifier = stabModifier * burnModifier * weatherModifier * critModifier * randomModifier;
-
-        let damage = Math.floor(clamp(Math.floor(baseDamage * modifier), 1) * typeEffectiveness);
-        // console.log("DMG", damage, "Mult", modifier);
-        return { damage, isCrit, typeEffectiveness }
+        this.moves = moveData.slice(0, count).map(raw => new Move(raw));
     }
 
+    applyStatus(ailment) {
+        // console.log("AILMENT????");
+        if (this.status !== "none") return false; // already has a major status
+        // console.log("AILMENT", ailment);
+        this.status = ailment;
+
+        return true;
+    }
 
     /**
      * Use a move against a target Pokemon.
@@ -321,33 +228,97 @@ export default class Pokemon {
             };
         }
 
-        // accuracy check
-        let missed = !chance(move.accuracy);
-        if (missed) {
-            return {
-                success: true,
-                hit: false,
-                move: move.name,
-                damage: 0,
-                priority: move.priority
-                // targetHp: target.currentHp,
-            };
-        }
 
-        const { damage, isCrit, typeEffectiveness } = await this.calculateDamage(target, move);
-
-        target.stats.hp = clamp(target.stats.hp - damage);
-
-        return {
-            success: true,
-            hit: true,
-            move: move.name,
-            damage,
-            isCrit,
-            typeEffectiveness,
-            // targetHp: target.currentHp,
-            targetFainted: target.isFainted,
-            priority: move.priority
-        };
+        let result = await move.use(this, target);
+        return result;
     }
 }
+
+
+// getMove(name) {
+//     let moves = this.species.moves;
+//     // console.log(moves);
+
+//     let move = (moves.find(entry => entry.move.name == name)).move;
+
+
+//     return getData(move.url);
+// }
+
+// async calculateDamage(target, move, field = { weather: "sunny" }) {
+//     const level = this.level;
+//     const power = move.power;
+
+//     const isPhysical = move.damage_class === "physical";
+
+//     const attack = isPhysical
+//         ? this.stats.attack
+//         : this.stats.spAttack;
+
+//     const defense = isPhysical
+//         ? target.stats.defense
+//         : target.stats.spDefense;
+
+//     // 1. Base damage
+//     // console.log("Lv:", level, "Pow:", power, "Atk:", attack, "Def:", defense);
+//     let baseDamage = Math.floor(
+//         Math.floor(
+//             Math.floor((2 * level) / 5 + 2) * power * (attack / defense)
+//         ) / 50
+//     ) + 2;
+
+//     // === Apply Modifiers ===
+
+//     // For Future Implementation WIP
+//     // 2. Target modifier (double battles)
+//     // modifier *= move.targetsMultiple ? 0.75 : 1;
+
+
+//     // 3. STAB
+//     const stabModifier = this.types.includes(move.type.name)
+//         ? 1.5
+//         : 1
+
+
+//     // 4. Burn
+//     const isBurned = this.status == "burned";
+//     const burnModifier = (isBurned && isPhysical && this.ability !== "guts")
+//         ? 0.5
+//         : 1
+
+
+//     // 5. Weather
+//     const weatherModifier = 1;
+//     if (field.weather === "rain") {
+//         if (move.type.name === "water") weatherModifier = 1.5;
+//         if (move.type.name === "fire") weatherModifier = 0.5;
+//     }
+//     if (field.weather === "sun") {
+//         if (move.type.name === "fire") weatherModifier = 1.5;
+//         if (move.type.name === "water") weatherModifier = 0.5;
+//     }
+
+
+//     // 6. Critical hit
+//     // Determines if the hit was critical.
+//     const isCrit = chance(Move.getCritChance(move));
+//     const critModifier = isCrit
+//         ? 1.5
+//         : 1;
+
+//     // 7. Random           0.85—1.00
+//     const randomModifier = (85 + Math.floor(Math.random() * 16)) / 100;
+
+
+//     // 8. Type effectiveness  e.g. 2, 0.5, 4, 0, etc.
+//     const typeEffectiveness = await PokeApi.getTypeEffectiveness(move.type.name, target.types);
+
+
+//     // 9. Other modifiers omitted for simplicity
+
+//     const modifier = stabModifier * burnModifier * weatherModifier * critModifier * randomModifier;
+
+//     let damage = Math.floor(clamp(Math.floor(baseDamage * modifier), 1) * typeEffectiveness);
+//     // console.log("DMG", damage, "Mult", modifier);
+//     return { damage, isCrit, typeEffectiveness }
+// }

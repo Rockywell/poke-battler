@@ -1,9 +1,8 @@
-// poke-api.mjs
 import { getData } from "./utlils.mjs";
 
 export default class PokeApi {
     static api = "https://pokeapi.co/api/v2";
-
+    // This should eventually be upgraded to Pokemon Showdown API for more accurate move mechanics.
 
     static #masterCache = new Map();
 
@@ -40,18 +39,34 @@ export default class PokeApi {
         await this.getBaseData(nameOrId, "nature", this.#natureCache);
 
 
-    static async getTypeIcon(typeName) {
-        if (!typeName) return null;
-        const typeData = await this.getType(typeName);
+    static async getTypeIcon(typeNameOrId) {
+        if (!typeNameOrId) return null;
+        const typeData = await this.getType(typeNameOrId);
 
-        // adjust path if your JSON shape differs slightly
         return (
             typeData?.sprites?.["generation-viii"]?.["sword-shield"]?.name_icon ??
             typeData?.["sword-shield"]?.name_icon ??
             null
         );
     }
-}
 
-// export a singleton
-// export const pokeApi = new PokeApi();
+    static async getTypeEffectiveness(typeNameOrId, targetTypes) {
+        const { damage_relations } = await this.getType(typeNameOrId);
+
+        let multiplier = 1;
+
+        for (const targetType of targetTypes) {
+            if (damage_relations.no_damage_to.some(t => t.name === targetType)) {
+                multiplier *= 0;
+            } else if (damage_relations.double_damage_to.some(t => t.name === targetType)) {
+                multiplier *= 2;
+            } else if (damage_relations.half_damage_to.some(t => t.name === targetType)) {
+                multiplier *= 0.5;
+            }
+        }
+
+        return multiplier;
+    }
+
+
+}

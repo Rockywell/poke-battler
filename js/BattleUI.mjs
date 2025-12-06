@@ -41,7 +41,6 @@ export default class BattleUI {
     }
 
     get zoom() {
-        // console.log("Zoom");
         return fitScale(
             this.maxViewDimensions,
             this.player.activePokemon.getSpriteDimensions(),
@@ -129,26 +128,20 @@ export default class BattleUI {
             const moveTile = this.moves[index];
             if (!moveTile) return;
 
-            const descriptions = move.flavor_text_entries.filter(
-                entry => entry.language.name === this.language
-            );
-            const lastDesc = descriptions[descriptions.length - 1];
+            const lastDesc = move.getDescription(this.language);
 
-            const type = move.type?.name ?? "unknown";
-            const damageClass = move.damage_class?.name ?? "status";
+
+            const type = move.type ?? "unknown";
+            const damageClass = move.damageClass ?? "status";
             const power = move.power ?? "—";
             const accuracy = move.accuracy ?? "—";
             const ppMax = move.pp ?? "—";
-            const ppCurrent = move.currentPP ?? ppMax; // if you later track PP, attach it here
+            const ppCurrent = move.pp ?? ppMax;
 
-            // Optional: nicer labels
-            const dmgClassLabel = {
-                physical: "Physical",
-                special: "Special",
-                status: "Status",
-            }[damageClass] ?? capFirst(damageClass);
+            // Damage Labels
+            const dmgClassLabel = capFirst(damageClass);
 
-            moveTile.classList.add("move-card"); // styling hook
+            moveTile.classList.add("move-card");
 
             moveTile.innerHTML = `
             <div class="move-header">
@@ -178,7 +171,7 @@ export default class BattleUI {
             </div>
 
             <p class="move-desc">
-                ${(lastDesc?.flavor_text ?? "").replace(/\f/g, " ")}
+                ${(lastDesc ?? "").replace(/\f/g, " ")}
             </p>
         `;
 
@@ -193,6 +186,20 @@ export default class BattleUI {
 
     enableMoves() {
         this.moves.forEach(btn => btn.disabled = false);
+    }
+
+    // Plays animation for the one inflicted with a status effect.
+    async playStatusAnimation(inflicted, inflictedCard, statusResults) {
+        const inflictedSprite = inflictedCard.querySelector(".sprite-placeholder");
+        const inflictedHpBar = inflictedCard.querySelector(".hp-bar");
+
+        console.log("STATUS", statusResults);
+        let statusAnimation = playAnimationOnce(inflictedSprite, "status");
+
+        this.updateHp(inflicted, inflictedHpBar);
+
+        await statusAnimation;
+
     }
 
     async playUseMoveAnimation(target, userCard, targetCard, moveResults) {
@@ -215,6 +222,7 @@ export default class BattleUI {
         if (moveResults.hit && moveResults.damage > 0) {
 
             this.updateHp(target, targetHpBar);
+
             await playAnimationOnce(targetSprite, "hit");
 
             if (target.isFainted) await playAnimationOnce(targetSprite, "faint")

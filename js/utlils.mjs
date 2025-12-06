@@ -157,6 +157,11 @@ export function getData(url) {
 //String/Character Functions
 
 export const capFirst = s => s && s[0].toUpperCase() + s.slice(1);
+export const toCamel = s => s.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+//Converts strings into abbreviated Camel Case e.g. "special-attack" -> "spAttack"
+export const toAbbreviatedCamel = s => toCamel(s.replace(/^(.{2}).*-(.+)$/, "$1-$2"));
+
+
 
 //Mathematical Functions
 

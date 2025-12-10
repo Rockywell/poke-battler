@@ -32,15 +32,6 @@ export default class PokemonTrainer {
         return this.#team[this.#activePokemonIndex] ?? null;
     }
 
-    // get activePokemonIndex() {
-    //     return this.#activePokemonIndex;
-    // }
-
-    // #set activePokemonIndex(index) {
-    //     if (index < 0 || index >= this.#team.length) return;
-    //     this.#activePokemonIndex = index;
-    // }
-
     addPokemon(pokemon) {
         if (this.isTeamFull) throw new Error("Team full");
         this.#team.push(pokemon);
@@ -52,7 +43,7 @@ export default class PokemonTrainer {
 
         this.#team.splice(index, 1);
 
-        // Make sure the activeIndex still points to a pokemon.
+        // Makes sure the activeIndex still points to a pokemon.
         if (this.#activePokemonIndex >= this.#team.length) {
             this.#activePokemonIndex = Math.max(0, this.#team.length - 1);
         }
@@ -68,12 +59,13 @@ export default class PokemonTrainer {
         return true;
     }
 
-    switchToNextAlive() {
+    async switchToNextAlive() {
         const index = this.#team.findIndex(p => !p.isFainted);
         if (index === -1) return false;
 
 
         this.#activePokemonIndex = index;
+        await this.activePokemon.cry();
         return true;
     }
 }

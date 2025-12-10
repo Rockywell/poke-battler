@@ -1,11 +1,12 @@
 import PokeApi from "./PokeApi.mjs";
+import { WEATHER_TYPE } from "./Weather.mjs";
 import { chance, clamp, toAbbreviatedCamel } from "./utlils.mjs";
+import { PRIMARY_STATUSES, VOLATILE_STATUSES } from "./statusEngine.mjs";
 
 // helper for stat stages
 function clampStage(stage) {
     return clamp(stage, -6, 6);
 }
-
 
 export default class Move {
 
@@ -36,13 +37,8 @@ export default class Move {
         this.ailment = raw.meta?.ailment?.name ?? "none"; // "paralysis" | "burn" | "poison" | "sleep" etc...
         this.ailmentChance = raw.meta?.ailment_chance ?? 0;
         this.statChance = raw.meta?.stat_chance ?? 0;
-        // flinch_chance
-        // effect_chance???? //Effect_chance is the fall back for general seconday effect or a fallback for volatile statuses if ailment_chance is empty
-        //       "effect_changes": [
-        // {
-        //   "effect_entries": [
-        //     {
-        //       "effect": "Does not raise Defense.",
+        this.flinchChance = raw.meta?.flinch_chance;
+        // effect_chance???? // Effect_chance is the fall back for general seconday effect or a fallback for volatile statuses if ailment_chance is empty
 
         // Percentage 0-100 of how much the user heals based on damage dealt.
         this.drain = raw.meta?.drain ?? 0;
@@ -82,8 +78,8 @@ export default class Move {
         return this.damageClass === "special";
     }
 
-    get isStatusOnly() {
-        return this.damageClass === "status" || !this.power;
+    get isStatus() {
+        return this.damageClass === "status";
     }
 
     get critStage() {
@@ -112,21 +108,28 @@ export default class Move {
     }
 
     rollAilment() {
-        return chance(this.ailmentChance) && this.ailment !== "none";
+        return (chance(this.ailmentChance) || this.isStatus) && this.ailment !== "none";
+    }
+
+    rollFlinch() {
+        return chance(this.flinchChance);
     }
 
     rollStatChange() {
-        return (chance(this.statChance) || this.targetsSelf) && this.changesStats
+        return (chance(this.statChance) || this.isStatus) && this.changesStats
     }
 
-    get didConnectWithTarget() {
-        return chance(this.accuracy);
+    didConnectWithTarget(user, target) {
+        let accuracyMult = this.getStageMultiplier(user?.statStages?.["acccuracy"] ?? 0);
+        let evasionMult = this.getStageMultiplier(-(target?.statStages?.["evasion"] ?? 0));
+
+        return chance(this.accuracy * accuracyMult * evasionMult) || !this.accuracy;
     }
 
 
     getDescription(lang = "en") {
         const filtered = this.flavorTextEntries.filter(
-            e => e.language.name === lang
+            e => e.language.name === lang && !e.flavor_text.includes("This move can’t be used.")
         );
         const last = filtered[filtered.length - 1];
         return last?.flavor_text?.replace(/\f/g, " ") ?? "";
@@ -166,12 +169,10 @@ export default class Move {
         let modifiedUserStats = this.getModifiedStats(user);
         let modifiedTargetStats = this.getModifiedStats(target);
 
-        // console.table(modifiedTargetStats);
-        // console.table(modifiedUserStats);
 
         const level = user.level;
 
-        const power = this.power;
+        const power = this.power ?? 0;
         const isPhysical = this.isPhysical;
 
 
@@ -183,15 +184,12 @@ export default class Move {
             ? modifiedTargetStats.defense
             : modifiedTargetStats.spDefense;
 
-        // EVENTUALLY INCLUDE EVASION.
-
         // 1. Base damage
-        console.log("Lv:", level, "Pow:", power, "Atk:", attack, "Def:", defense);
-        let baseDamage = Math.floor(
+        let baseDamage = (Math.floor(
             Math.floor(
                 Math.floor((2 * level) / 5 + 2) * power * (attack / defense)
             ) / 50
-        ) + 2;
+        ) + 2);
 
         // === Apply Modifiers ===
 
@@ -215,11 +213,11 @@ export default class Move {
 
         // 5. Weather
         let weatherModifier = 1;
-        if (field.weather === "rain") {
+        if (field.weather === "rainy") {
             if (this.type === "water") weatherModifier = 1.5;
             if (this.type === "fire") weatherModifier = 0.5;
         }
-        if (field.weather === "sun") {
+        if (field.weather === "sunny") {
             if (this.type === "fire") weatherModifier = 1.5;
             if (this.type === "water") weatherModifier = 0.5;
         }
@@ -248,36 +246,37 @@ export default class Move {
     }
 
     calculateHeal(target) {
-        return target.defaultStats.hp * this.meta?.healing / 100;
+        return Math.floor(target.defaultStats.hp * this.meta?.healing / 100);
     }
 
     // Get the amount of health the user recieves from dealing damage.
     calculateDrain(damage) {
-        return damage * this.meta?.drain / 100;
+        return Math.floor(damage * this.meta?.drain / 100);
     }
 
-    applyAilment(target, effects) {
-        // If Pokémon implements applyStatus, use that; otherwise just set status
-        if (typeof target.applyStatus === "function") {
-            const applied = target.applyStatus(this.ailment);
-            if (!applied) return;
-        } else {
-            if (target.status) return; // already has a main status
-            target.status = this.ailment;
-        }
+    applyAilment(target, effects, ailment = this.ailment) {
+        // If Pokémon implements applyStatus, use that, otherwise just set status
+
+        if (PRIMARY_STATUSES.has(ailment)) {
+            if (typeof target.applyStatus === "function") {
+                const applied = target.applyStatus(ailment);
+                if (!applied) return;
+            } else {
+                if (target.hasStatus) return; // already has a main status
+                target.status = ailment;
+            }
+        } else if (VOLATILE_STATUSES.has(ailment)) {
+            target.volatileStatuses.add(ailment);
+        } else return
 
         effects.push({
             type: "status",
-            status: this.ailment,
-            target: "target",
+            status: ailment,
+            target: target,
         });
     }
 
     applyStatChanges(target, effects) {
-
-        // if (!target.statStages) return;
-
-
         for (const [key, amount] of Object.entries(this.statChanges)) {
             // Skip if the key isn't present in the target.
             if (!(key in target.statStages)) continue;
@@ -290,7 +289,7 @@ export default class Move {
                 type: "stat-change",
                 stat: key,
                 amount,
-                target: this.targetName,
+                target: target,
             })
         }
     }
@@ -298,70 +297,79 @@ export default class Move {
     async use(user, target = user) {
         if (this.targetsSelf) target = user;
 
-        // let result = {};
-
-        // WIP
-        let damage = 0;
-        let isCrit = false;
-        let typeEffectiveness = 1;
-        const secondaryEffects = [];
-        // WIP
-
-        if (!this.canUse) return {
+        let result = {
+            name: this.name,
             success: false,
-            message: `${this.name} is out of PP.`,
+            hit: false,
+            damage: 0,
+            isCrit: false,
+            typeEffectiveness: 1,
+            targetsSelf: this.targetsSelf,
+            priority: this.priority,
+            secondaryEffects: [],
+            messages: [`${user.name} used ${this.name}!`]
         };
+
+        if (!this.canUse) {
+            result.messages.push(`${this.name} is out of PP.`);
+            return result
+        }
 
         // Number of uses.
         this.pp--;
 
-        // console.log(`${this.name}: ${this.category}`, this.damageClass, this.power);
 
         // Did the move miss the target?
-        if (!this.targetsSelf && !this.didConnectWithTarget) return {
-            success: true,
-            hit: false,
-            move: this.name,
-            damage: 0,
-            priority: this.priority
-        };
+        if (!this.didConnectWithTarget(user, target)) {
+            result.messages.push(`${user.name} missed!`);
 
+            return Object.assign(result, {
+                success: true,
+                hit: false,
+            });
+        }
 
 
         // 1. Damage
         if (this.dealsDamage) {
-            ({ damage, isCrit, typeEffectiveness } = await this.calculateDamage(user, target));
+            Object.assign(result, await this.calculateDamage(user, target, { weather: WEATHER_TYPE }));
 
-            target.stats.hp = clamp(target.stats.hp - damage, 0, target.defaultStats.hp);
+            // Super Effective Move
+            if (result.typeEffectiveness >= 2) result.messages.push("It's super effective!");
+            // Innefective Move
+            if (result.typeEffectiveness == 0) result.messages.push("It had no effect!");
+
+            target.stats.hp = clamp(target.stats.hp - result.damage, 0, target.defaultStats.hp) || 0;
 
             // Drain Heal - rolled once for total damage
-            let drain = this.calculateDrain(damage);
+            let drain = this.calculateDrain(result.damage);
             user.stats.hp = clamp(user.stats.hp + drain, 0, user.defaultStats.hp);
         }
 
         // 2. Healing
         if (this.canHeal) {
-            let heal = this.calculateHeal(target);
+            let heal = this.calculateHeal(target) || 0;
             target.stats.hp = clamp(target.stats.hp + heal, 0, target.defaultStats.hp);
         }
 
         // 3. Primary ailment
-        if (this.rollAilment()) { console.log("applying ailment"); this.applyAilment(target, secondaryEffects); }
+        if (this.rollAilment()) this.applyAilment(target, result.secondaryEffects);
         // 4. Stat changes
-        if (this.changesStats) { console.log("changing stats"); this.applyStatChanges(target, secondaryEffects); }
+        if (this.changesStats) {
+            let statTarget = this.category.includes("raise") ? user : target;
+            this.applyStatChanges(statTarget, result.secondaryEffects);
+        }
         // 5. Flinch flinchChance
+        if (this.rollFlinch()) this.applyAilment(target, result.secondaryEffects, "flinch");
 
-        return {
+
+
+        // Other messages to add: "A critical hit!"
+        return Object.assign(result, {
             success: true,
-            hit: true, // !!target && (!this.isStatusOnly ? damage > 0 || typeEffectiveness >= 0 : true)
-            move: this.name,
-            damage,
-            isCrit,
-            typeEffectiveness,
+            hit: true,
             targetFainted: target.isFainted,
-            priority: this.priority,
-            secondaryEffects,
-        };
+        });
 
     }
 }

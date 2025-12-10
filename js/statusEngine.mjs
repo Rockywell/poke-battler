@@ -1,24 +1,23 @@
-// StatusEngine.mjs
-import { clamp, chance } from "./utlils.mjs";
+import { clamp, chance, randomInt } from "./utlils.mjs";
 
-// What we consider "primary" (non-volatile) statuses
+// Primary (non-volatile) statuses.
 export const PRIMARY_STATUSES = new Set([
     "burn",
     "paralysis",
     "poison",
-    "badly-poisoned",
+    "badly-poisoned", // Also known as toxic.
     "sleep",
     "freeze"
 ]);
 
-// Some common volatile statuses (you can expand this)
+// Volatile statuses - this should be in the order of priority (What gets applies first).
 export const VOLATILE_STATUSES = new Set([
-    "confusion",
     "flinch",
+    "confusion",
+    "trap",
     "leech-seed"
 ]);
 // flinch, attraction, confusion, bind, trap, recharge, focus-energy, protect-like, substitute-like, taunt, torment, disable, embargo,etc.
-
 
 // Resolves/Removes statuses
 function clearStatus(target, statusName) {
@@ -32,22 +31,44 @@ function clearStatus(target, statusName) {
     }
 }
 
+// Sets up a status and it's counters.
+function setStatus(target, statusName) {
+    const status = STATUS_DEFS[statusName];
+
+    target.statusCounters ??= {};
+
+    target.statusCounters[statusName] = status?.counter ?? randomInt(status.minCounter, status.maxCounter);
+}
+
+// Checks if the status has a counter and that the target doesn't already have the counter.
+function hasCounter(target, statusName) {
+    const status = STATUS_DEFS[statusName];
+    const counterProperties = ["minCounter", "counter", "maxCounter"];
+
+    return !Object.hasOwn(target.statusCounters ?? {}, statusName) && counterProperties.some((property) =>
+        Object.hasOwn(status, property)
+    );
+}
 
 // Dataset and Handler for each statuses individual effects.
 const STATUS_DEFS = {
-    // --- Primary Statuses
+    // --- Primary Statuses ---
     burn: {
         kind: "primary",
         phases: {
-            end: ({ target, ctx }) => {
-                const damage = Math.max(1, Math.floor(target.defaultStats.hp / 16));
+            end({ target, result }) {
+                // Residual damage – 1/16 max HP
+                const maxHp = target.defaultStats.hp;
+                const damageFrac = 1 / 16;
+                const damage = Math.max(1, Math.floor(maxHp * damageFrac));
+
                 target.stats.hp = clamp(
                     target.stats.hp - damage,
                     0,
                     target.defaultStats.hp
                 );
-                ctx.damage += damage;
-                ctx.messages.push(`${target.name} is hurt by its burn!`);
+                result.damage += damage;
+                result.messages.push(`${target.name} is hurt by its burn!`);
             }
         }
     },
@@ -55,65 +76,87 @@ const STATUS_DEFS = {
     paralysis: {
         kind: "primary",
         phases: {
-            start: ({ target, ctx }) => {
+            start({ target, result }) {
                 if (chance(25)) {
-                    ctx.messages.push(`${target.name} is fully paralyzed!`);
-                    ctx.canAct = false;
+                    result.messages.push(`${target.name} is fully paralyzed!`);
+                    result.canAct = false;
                 }
-            }
+            },
+            //PURELY FOR SETUP
+            // end({ target, result }) {
+            //     result.messages.push(`${target.name} is paralyzed! It may be unable to move!`);
+            // }
         }
     },
 
     poison: {
         kind: "primary",
         phases: {
-            end: ({ target, ctx }) => {
-                const damage = Math.max(1, Math.floor(target.defaultStats.hp / 8));
+            end({ target, result }) {
+
+                // Residual damage – 1/8 max HP
+                const maxHp = target.defaultStats.hp;
+                const damageFrac = 1 / 8;
+                const damage = Math.max(1, Math.floor(maxHp * damageFrac));
+
                 target.stats.hp = clamp(
                     target.stats.hp - damage,
                     0,
                     target.defaultStats.hp
                 );
-                ctx.damage += damage;
-                ctx.messages.push(`${target.name} is hurt by the poison!`);
+                result.damage += damage;
+                result.messages.push(`${target.name} is hurt by the poison!`);
             }
         }
     },
 
     "badly-poisoned": {
         kind: "primary",
+        counter: 1,
         phases: {
-            end: ({ target, ctx }) => {
-                const n = target.statusCounters.toxic || 1;
-                const frac = n / 16;
-                const raw = target.defaultStats.hp * frac;
-                const damage = Math.max(1, Math.floor(raw));
+            end({ target, result }) {
+
+                // target.statusCounters.toxic
+                const counter = target.statusCounters["badly-poisoned"];
+
+                // Residual damage – counter/16 max HP
+                const maxHp = target.defaultStats.hp;
+                const damageFrac = counter / 16;
+                const damage = Math.max(1, Math.floor(maxHp * damageFrac));
 
                 target.stats.hp = clamp(
                     target.stats.hp - damage,
                     0,
                     target.defaultStats.hp
                 );
-                target.statusCounters.toxic = n + 1;
+                target.statusCounters["badly-poisoned"] = counter + 1;
 
-                ctx.damage += damage;
-                ctx.messages.push(`${target.name} is hurt by the toxic poison!`);
+                result.damage += damage;
+                result.messages.push(`${target.name} is hurt by the toxic poison!`);
             }
         }
     },
 
     sleep: {
         kind: "primary",
+
+        //Technically 1
+        minCounter: 2,
+        maxCounter: 3,
+
         phases: {
-            start: ({ target, ctx }) => {
+            start({ target, result }) {
                 if (target.statusCounters.sleep > 0) {
                     target.statusCounters.sleep--;
-                    ctx.messages.push(`${target.name} is fast asleep.`);
-                    ctx.canAct = false;
+
+                    result.messages.push(`${target.name} is fast asleep.`);
+                    result.canAct = false;
 
                     if (target.statusCounters.sleep === 0) {
                         clearStatus(target, "sleep");
-                        ctx.messages.push(`${target.name} woke up!`);
+                        result.canAct = true;
+
+                        result.messages.push(`${target.name} woke up!`);
                     }
                 }
             }
@@ -123,27 +166,31 @@ const STATUS_DEFS = {
     freeze: {
         kind: "primary",
         phases: {
-            start: ({ target, ctx }) => {
+            start({ target, result }) {
                 if (chance(80)) {
-                    ctx.messages.push(`${target.name} is frozen solid!`);
-                    ctx.canAct = false;
+                    result.messages.push(`${target.name} is frozen solid!`);
+                    result.canAct = false;
                 } else {
                     clearStatus(target, "freeze");
-                    ctx.messages.push(`${target.name} thawed out!`);
+                    result.messages.push(`${target.name} thawed out!`);
                 }
             }
         }
     },
 
-    // --- Volatile Statuses
+    // --- Volatile Statuses ---
 
     flinch: {
         kind: "volatile",
         phases: {
-            start: ({ target, ctx }) => {
-                if (!target.volatileStatuses?.has("flinch")) return;
-                ctx.messages.push(`${target.name} flinched and couldn't move!`);
-                ctx.canAct = false;
+            start({ target, result }) {
+                result.messages.push(`${target.name} flinched and couldn't move!`);
+                result.canAct = false;
+                clearStatus(target, "flinch");
+            },
+            // Flinch is always removed at the end of turn regardless of wether or not it triggered.
+            end({ target, result }) {
+                result.affected = false;
                 clearStatus(target, "flinch");
             }
         }
@@ -151,20 +198,25 @@ const STATUS_DEFS = {
 
     confusion: {
         kind: "volatile",
+
+        minCounter: 1,
+        maxCounter: 4,
+
         phases: {
-            start: ({ target, ctx }) => {
-                if (!target.volatileStatuses?.has("confusion")) return;
+            start({ target, result }) {
 
                 if (target.statusCounters.confusion <= 0) {
                     clearStatus(target, "confusion");
-                    ctx.messages.push(`${target.name} snapped out of its confusion!`);
+                    result.messages.push(`${target.name} snapped out of its confusion!`);
                     return;
                 }
 
+                result.messages.push(`${target.name} is confused!`);
                 target.statusCounters.confusion--;
 
-                // 50% chance to hurt itself
+                // 50% chance to hurt itself.
                 if (chance(50)) {
+
                     const lvl = target.level ?? 50;
                     const atk = target.stats.attack;
                     const def = target.stats.defense || 1;
@@ -181,44 +233,98 @@ const STATUS_DEFS = {
                         0,
                         target.defaultStats.hp
                     );
-                    ctx.damage += damage;
-                    ctx.messages.push(`${target.name} hurt itself in its confusion!`);
-                    ctx.canAct = false;
+                    result.damage += damage;
+                    result.messages.push(`${target.name} hurt itself in its confusion!`);
+                    result.canAct = false;
                 }
             }
         }
+    },
+
+    trap: {
+        kind: "volatile",
+
+        minCounter: 2,
+        maxCounter: 5,
+
+        phases: {
+            end({ target, result }) {
+                const duration = target.statusCounters.trap ?? 0;
+                if (duration <= 0) return;
+
+                // Residual damage – 1/8 max HP
+                const maxHp = target.defaultStats.hp;
+                const damageFrac = 1 / 8;
+
+                const damage = Math.max(1, Math.floor(maxHp * damageFrac));
+
+                target.stats.hp = clamp(
+                    target.stats.hp - damage,
+                    0,
+                    target.defaultStats.hp
+                );
+
+                result.messages.push(`${target.name} is hurt by the trap!`);
+
+                target.statusCounters.trap = duration - 1;
+
+                if (target.statusCounters.trap === 0) {
+                    clearStatus(target, "trap");
+                    result.messages.push(`${target.name} is freed from the trap!`);
+                }
+            }
+        },
+
+        // IMPLEMENT LATER
+        // blockSwitch: true
     }
 };
 
+// applyStatus()
+// applyVolatileStatus()
 
 export function applyStatusPhase(target, phase) {
-    const ctx = {
-        canAct: true,   // relevant for "start"
-        damage: 0,      // relevant for "end"
+    const result = {
+        affected: false, // If the target was affected by the status.
+        canAct: true,    // If the target can act.
+        damage: 0,
         messages: []
     };
 
-    // Primary status
-    if (target.status) {
+    // Primary status - target.status !== "none";
+    if (target.hasStatus) {
         const def = STATUS_DEFS[target.status];
         const fn = def?.phases?.[phase];
+
         if (fn) {
-            fn({ target, ctx });
+            if (hasCounter(target, target.status)) setStatus(target, target.status);
+
+            result.affected = true;
+            fn({ target, result });
+
+            // If a status stops action, exit early.
+            if (!result.canAct && phase === "start") return result;
         }
     }
 
     // Volatile statuses
     if (target.volatileStatuses) {
         for (const name of target.volatileStatuses) {
+
             const def = STATUS_DEFS[name];
             const fn = def?.phases?.[phase];
+
             if (fn) {
-                fn({ target, ctx });
-                // if a status stops action, you *might* want to stop early:
-                if (!ctx.canAct && phase === "start") break;
+                if (hasCounter(target, name)) setStatus(target, name);
+
+                result.affected = true;
+                fn({ target, result });
+
+                // If a status stops action, exit early.
+                if (!result.canAct && phase === "start") break;
             }
         }
     }
 
-    return ctx;
+    return result;
 }

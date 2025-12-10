@@ -29,41 +29,8 @@ export function setClick(selector, callback) {
     qs(selector).addEventListener("click", callback);
 }
 
-export function renderListWithTemplate(templateFn, parentElement, list, position = "afterbegin", clear = false) {
-    if (clear) parentElement.replaceChildren();
-
-    let listTemplate = list.map(templateFn).join('');
-    parentElement.insertAdjacentHTML(position, listTemplate);
-}
-
-export function renderWithTemplate(template, parentElement, data, callback) {
-
-    parentElement.innerHTML = template;
-
-    if (callback) callback(data);
-}
-
-export async function loadTemplate(path) {
-    const res = await fetch(path);
-    const template = await res.text();
-
-    return template;
-}
-
-export async function loadHeaderFooter() {
-    const headerTemplate = await loadTemplate("../partials/header.html");
-    const headerElement = document.querySelector("#main-header");
-
-    const footerTemplate = await loadTemplate("../partials/footer.html");
-    const footerElement = document.querySelector("#main-footer");
-
-    renderWithTemplate(headerTemplate, headerElement);
-    renderWithTemplate(footerTemplate, footerElement);
-
-    ShoppingCart.updateCartCount();
-}
-
 //Alert messages
+// Used to set event for messages to appear
 export function alertMessage(message, scroll = true) {
     const alert = document.createElement('div');
 
@@ -72,7 +39,7 @@ export function alertMessage(message, scroll = true) {
 
 
     alert.addEventListener('click', function (e) {
-        if (e.target.tagName == "SPAN") { // how can you tell if they clicked on the X or on something else?  hint: check out e.target.tagName or e.target.innerText
+        if (e.target.tagName == "SPAN") {
             main.removeChild(this);
         }
     })
@@ -101,15 +68,16 @@ export function getParam(param) {
 
 //Local Storage
 
-// retrieve data from localstorage
+// Retrieves data from localstorage
 export function getLocalStorage(key) {
     return JSON.parse(localStorage.getItem(key));
 }
-// save data to local storage
+// Saves data to local storage
 export function setLocalStorage(key, data) {
     localStorage.setItem(key, JSON.stringify(data));
+    return data;
 }
-// adds one or multiple data items to a local storage array
+// Adds one or multiple data items to a local storage array.
 export function addLocalStorage(key, ...data) {
     let storage = getLocalStorage(key) ?? [];
 
@@ -117,6 +85,17 @@ export function addLocalStorage(key, ...data) {
 
     setLocalStorage(key, combinedData);
 }
+
+//Saves Maps and Map caches to local storage.
+export function saveCache(key, map) {
+    setLocalStorage(key, Array.from(map.entries()));
+}
+// Retrieves and loads the Map(s) from local storage.
+export function loadCache(key) {
+    const array = getLocalStorage(key);
+    return array ? new Map(array) : new Map();
+}
+
 
 //Fetch functions
 
@@ -139,11 +118,7 @@ function formDataToJSON(formElement) {
     return convertedJSON;
 }
 
-// export function getData(url) {
-//     return fetch(`${baseURL}products/search/${category}`)
-//         .then(convertToJson)
-//         .then((data) => data.Result);
-// }
+
 
 export function getData(url) {
     try {
@@ -152,6 +127,13 @@ export function getData(url) {
     catch (error) {
         console.log(error);
     }
+}
+
+export function playAudio(url) {
+    const audio = new Audio(url);
+    return audio.play().catch(err => {
+        console.error('Audio playback failed:', err);
+    });
 }
 
 //String/Character Functions
@@ -182,7 +164,12 @@ export function fitScale(maxSize, ...sizes) {
 
 //Random Functions
 
-// percent is a number like 80 for 80%
+// Percent is a number like 80 for 80%
 export function chance(percent) {
     return Math.random() < percent / 100;
+}
+
+// Return a random integer in the range (inclusive).
+export function randomInt(min, max) {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
 }

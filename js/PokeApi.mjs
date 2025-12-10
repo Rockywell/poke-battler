@@ -1,16 +1,25 @@
-import { getData } from "./utlils.mjs";
+import { getData, saveCache, loadCache } from "./utlils.mjs";
 
 export default class PokeApi {
-    static api = "https://pokeapi.co/api/v2";
     // This should eventually be upgraded to Pokemon Showdown API for more accurate move mechanics.
+    static api = "https://pokeapi.co/api/v2";
+    static storageKey = "poke-api";
 
+    static pokemonKey = "pokemon-cache";
+    static moveKey = "move-cache";
+    static typeKey = "type-cache";
+    static abilityKey = "ability-cache";
+    static natureKey = "nature-cache"
+
+
+    // Help with heavy network loads and faster reloads.
     static #masterCache = new Map();
 
-    static #pokemonCache = new Map();
-    static #moveCache = new Map();
-    static #typeCache = new Map();
-    static #abilityCache = new Map();
-    static #natureCache = new Map();
+    static #pokemonCache = new Map(); // Too big to cache
+    static #moveCache = new Map();    // Too big to cache
+    static #typeCache = loadCache(this.typeKey);
+    static #abilityCache = loadCache(this.abilityKey);
+    static #natureCache = loadCache(this.natureKey);
 
 
     static async getBaseData(nameOrId, folderPath, cache = this.#masterCache) {
@@ -20,6 +29,12 @@ export default class PokeApi {
         cache.set(nameOrId, data);
 
         return data;
+    }
+
+    static async saveCaches() {
+        saveCache(this.typeKey, this.#typeCache);
+        saveCache(this.abilityKey, this.#abilityCache);
+        saveCache(this.natureKey, this.#natureCache);
     }
 
     // Generic API Calls
@@ -67,6 +82,4 @@ export default class PokeApi {
 
         return multiplier;
     }
-
-
 }

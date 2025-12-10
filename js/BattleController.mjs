@@ -1,9 +1,27 @@
+import { setLocalStorage, getLocalStorage, randomInt } from "./utlils.mjs";
 import { applyStatusPhase } from "./statusEngine.mjs";
 
+// Later completely overhaul system for UI and Controller to use an EventBus, emit and on.
 export default class BattleController {
 
-    // Saves the state of the battle.
-    battleState = new Map()
+    static storageKey = "battle-state"
+
+    static wins = getLocalStorage("wins") ?? 0
+    static losses = getLocalStorage("losses") ?? 0
+
+    battleOver = false;
+
+
+    // Saves the state of the battle. WIP
+    updateBattleState() {
+        setLocalStorage(BattleController.storageKey, {
+            player: this.player,
+            playerTeam: this.player.team,
+            opponent: this.opponent,
+            opponentTeam: this.opponent.team,
+            ui: this.ui,
+        })
+    }
 
     constructor(player, opponent, ui) {
         this.player = player; //PokemonTrainer
@@ -18,61 +36,91 @@ export default class BattleController {
         this.ui.setPlayerMoves(this.player.activePokemon.moves, this.onMoveClick);
     }
 
-    async onMoveClick(move, moveTile) {
-        const playerTurnMove = move.name;
-        const opponentTurnMove = this.opponent.activePokemon.moves[0].name;
+    finishBattle(trainer) {
+
+        if (trainer == this.opponent) {
+            setLocalStorage("wins", BattleController.wins + 1);
+            this.ui.replaceCardWithResultText(this.ui.opponentCard, "YOU WON");
+        } else {
+            setLocalStorage("losses", BattleController.losses + 1);
+            this.ui.replaceCardWithResultText(this.ui.playerCard, "YOU LOST");
+        }
+
+
+        this.ui.disableMoves();
+        return this.battleOver = true;
+    }
+
+    pokemonFainted(trainer, pokemonCard) {
+        if (trainer.isTeamKnockedOut) return this.finishBattle(trainer, pokemonCard);
+        trainer.switchToNextAlive();
+
+        let pokemon = trainer.activePokemon;
+
+        // UI: draw the new active Pokémon
+        this.ui.spawnPokemon(
+            pokemon,
+            pokemonCard
+        );
+
+
+        if (trainer === this.player) {
+            this.ui.setPlayerMoves(
+                pokemon.moves,
+                this.onMoveClick
+            );
+        }
+    }
+
+    async onMoveClick(move) {
+        const playerTurnMove = move;
+        const opponentTurnMove = this.opponent.activePokemon.moves[randomInt(0, this.opponent.activePokemon.moves.length - 1)];
+
+        //Updates the battleState
+        // this.updateBattleState();
 
         this.ui.disableMoves();
         await this.performRound(playerTurnMove, opponentTurnMove);
+
+        // Keeps moves disabled once the battle is over.
+        if (!this.battleOver) this.ui.enableMoves();
     }
 
     async useMove(moveName, user, target, userCard, targetCard, userTrainer, targetTrainer) {
         // 1. Game Logic
-        const moveResults = await user.useMove(moveName, target);
+        const moveResult = await user.useMove(moveName, target);
 
         // 2. Visuals
-        if (!moveResults.success) return moveResults;
+        if (!moveResult.success) return moveResult;
+
+        // Log Messages
+        this.ui.sendBattleLogs(moveResult.messages);
 
         await this.ui.playUseMoveAnimation(
             // moveName,
             // userPokemon,
+            user,
             target,
             userCard,
             targetCard,
-            moveResults
+            moveResult
         );
 
         if (targetTrainer === this.player) {
-            this.ui.setPlayerMoves(
+            await this.ui.setPlayerMoves(
                 this.player.activePokemon.moves,
                 this.onMoveClick
             );
         }
 
         // 3. Fainted Pokemon Logic
-        console.log("useMove T", target);
         if (target.isFainted) {
-
-            if (targetTrainer.isTeamKnockedOut) return { moveResults, battleOver: true, winner: userTrainer.name };
-            targetTrainer.switchToNextAlive();
-
-
-            // UI: draw the new active Pokémon
-            this.ui.spawnPokemon(
-                targetTrainer.activePokemon,
-                targetCard
-            );
-
-
-            if (targetTrainer === this.player) {
-                this.ui.setPlayerMoves(
-                    this.player.activePokemon.moves,
-                    this.onMoveClick
-                );
-            }
+            this.pokemonFainted(targetTrainer, targetCard)
+        } else if (user.isfainted) {
+            this.pokemonFainted(userTrainer, userCard)
         }
 
-        return moveResults//, battleOver: false };
+        return moveResult//, battleOver: false };
     }
 
     async playerUsesMove(moveName) {
@@ -102,31 +150,73 @@ export default class BattleController {
     }
 
     async performRound(playerMove, opponentMove) {
-        // Eventually add priority and speed determination to choose who goes first.
-        // console.log("PR", playerMove);
-        const playerTurn = await this.performPlayerTurn(playerMove);
+        let playerTurn;
+        let opponentTurn;
 
-        // console.log("PlayerTurn", playerTurn);
+        let movesInOrder = [];
 
-        if (playerTurn.battleOver) {
-            console.log("Battle ended, winner:", playerTurn.winner);
-            return;
+
+        // NOTE: I can eventually turn the whole function into a for loop for multi-teams in the future.
+        movesInOrder.push({
+            trainer: "player",
+            exec: async () => playerTurn = await this.performPlayerTurn(playerMove.name),
+            priority: playerMove.priority,
+            speed: this.player.activePokemon.stats.speed,
+            tieBreaker: Math.random()
+        });
+
+        movesInOrder.push({
+            trainer: "opponent",
+            exec: async () => opponentTurn = await this.performOpponentTurn(opponentMove.name),
+            priority: opponentMove.priority,
+            speed: this.opponent.activePokemon.stats.speed,
+            tieBreaker: Math.random()
+        });
+
+        // Sorts highest priority moves first.
+        movesInOrder.sort((a, b) => {
+            if (a.priority !== b.priority) return b.priority - a.priority;
+            if (a.speed !== b.speed) return b.speed - a.speed;
+            return a.tieBreaker - b.tieBreaker;
+        });
+
+        // Run moves in order.
+        for (const turn of movesInOrder) {
+            await turn.exec();
+            if (this.battleOver) return;
         }
 
 
-        if (playerTurn.moveResults.targetFainted) return; //Will need to resolve differently in the future.
+        // 3) End-of-turn
+        playerTurn.end = applyStatusPhase(this.player.activePokemon, "end");
+        opponentTurn.end = applyStatusPhase(this.opponent.activePokemon, "end");
+
+        if (playerTurn.end.affected) {
+            this.ui.sendBattleLogs(playerTurn.end.messages);
+
+            await this.ui.playStatusAnimation(
+                this.player.activePokemon,
+                this.ui.playerCard,
+                playerTurn.end
+            );
+            if (this.player.activePokemon.isFainted) this.pokemonFainted(this.player, this.ui.playerCard);
+            if (this.battleOver) return;
+        }
 
 
-        const opponentTurn = await this.performOpponentTurn(opponentMove);
+        if (opponentTurn.end.affected) {
+            this.ui.sendBattleLogs(opponentTurn.end.messages);
 
-        // console.log("EnemyTurn", opponentTurn);
-
-        if (opponentTurn.battleOver) {
-            console.log("Battle ended, winner:", opponentTurn.winner);
-            return
+            await this.ui.playStatusAnimation(
+                this.opponent.activePokemon,
+                this.ui.opponentCard,
+                opponentTurn.end
+            );
+            if (this.opponent.activePokemon.isFainted) this.pokemonFainted(this.opponent, this.ui.opponentCard);
+            if (this.battleOver) return;
         }
     }
-    //  field
+
     async performTurn(user, target, moveName, userCard, targetCard, userTrainer, targetTrainer) {
         const result = {
             start: null,
@@ -134,40 +224,35 @@ export default class BattleController {
             end: null
         };
 
-        // STATUS
         // 1) Start-of-turn
-        const startCtx = applyStatusPhase(user, "start");
 
-        // await this.ui.playStatusAnimation(
-        //     user,
-        //     userCard,
-        //     startCtx
-        // );
+        // Status Effects
+        result.start = applyStatusPhase(user, "start");
 
-        result.start = startCtx;
+        this.ui.sendBattleLogs(result.start.messages);
 
-        if (!startCtx.canAct) {
-            // can't act; still apply end-of-turn chip on attacker
-            const endCtx = applyStatusPhase(user, "end");
-            result.end = endCtx;
-            return result;
+        if (result.start.affected) {
+            await this.ui.playStatusAnimation(
+                user,
+                userCard,
+                result.start
+            );
+            if (user.isFainted) {
+                this.pokemonFainted(userTrainer, userCard);
+                return result;
+            }
         }
-        // STATUS
 
-        // 2) Use move
-        const moveResult = await this.useMove(moveName, user, target, userCard, targetCard, userTrainer, targetTrainer);
-        // const moveResult = await move.use(attacker, defender, field);
-        result.moveResults = moveResult;
 
-        // 3) End-of-turn
-        const endCtx = applyStatusPhase(user, "end");
-        result.end = endCtx;
+        // 2) Use move if you can act.
+        if (result.start.canAct) {
+            result.moveResult = await this.useMove(moveName, user, target, userCard, targetCard, userTrainer, targetTrainer);
+        }
 
         return result;
     }
 
     async performPlayerTurn(moveName) {
-        // remove move name and add trainer lost move command property or to pokemon last used move?
         return await this.performTurn(
             this.player.activePokemon,
             this.opponent.activePokemon,
@@ -180,7 +265,6 @@ export default class BattleController {
     }
 
     async performOpponentTurn(moveName) {
-        // remove move name and add trainer lost move command property or to pokemon last used move?
         return await this.performTurn(
             this.opponent.activePokemon,
             this.player.activePokemon,
@@ -191,13 +275,30 @@ export default class BattleController {
             this.player
         )
     }
-
-    // loadNewPokemon(trainer, trainerCard, opponentSprite, opponent) {
-    //     console.log(trainer);
-    //     if (!trainer.isTeamKnockedOut) {
-    //         trainer.activePokemonIndex++;
-    //         this.updatePokemonCard(trainer.activePokemon, trainerCard);
-    //         this.updateSprite(opponent, opponentSprite);
-    //     }
-    // }
 }
+
+
+
+
+// --- FUTURE THEORETICAL EVENT BUS --- // 
+
+// class EventBus {
+//     constructor() {
+//         this.listeners = {};
+//     }
+
+//     on(eventName, callback) {
+//         (this.listeners[eventName] ??= []).push(callback);
+//     }
+
+//     emit(eventName, payload) {
+//         (this.listeners[eventName] ?? []).forEach(fn => fn(payload));
+//     }
+// }
+// const events = new EventBus();
+
+// events.on("attack", (data) => {
+//     console.log("UI reacting:", ui.play.attackAnimation());
+// });
+
+// events.emit("attack", { move: "Tackle", damage: 12 });

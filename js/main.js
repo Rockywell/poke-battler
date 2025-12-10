@@ -1,21 +1,31 @@
+import { randomInt } from "./utlils.mjs";
 import Pokemon from "./Pokemon.mjs";
 import PokemonTrainer from "./PokemonTrainer.mjs";
 import BattleUI from "./BattleUI.mjs";
 import BattleController from "./BattleController.mjs";
+import PokeApi from "./PokeApi.mjs";
+
+// The ID range of Pokemon Black and White 2.
+const BWIdRange = {
+    min: 1,
+    max: 649,
+    get random() { return randomInt(this.min, this.max) }
+}
 
 let player = new PokemonTrainer(
     "Red",
     [
-        new Pokemon("Wailord"),
-        new Pokemon("Charizard"),
-        new Pokemon("Lucario")
+        new Pokemon(BWIdRange.random),
+        new Pokemon(BWIdRange.random),
+        new Pokemon(BWIdRange.random),
+        new Pokemon("Wailord", { level: 65 })
     ]
 );
 let opponent = new PokemonTrainer(
     "Gary",
     [
-        new Pokemon("Arceus", { level: 70, shiny: true }),
-        new Pokemon("Onix", { level: 80, shiny: true })
+        new Pokemon(BWIdRange.random, { level: 65 }),
+        new Pokemon("Arceus", { level: 65 }),
     ]
 );
 
@@ -34,8 +44,7 @@ const controller = new BattleController(
 );
 
 await trainers;
+
 controller.init();
 
-console.log(ui);
-
-console.table(player.activePokemon.moves);
+PokeApi.saveCaches();

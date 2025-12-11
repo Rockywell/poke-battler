@@ -279,6 +279,55 @@ const STATUS_DEFS = {
 
         // IMPLEMENT LATER
         // blockSwitch: true
+    },
+
+    "leech-seed": {
+        kind: "volatile",
+
+        phases: {
+            end({ target, result }) {
+
+                const seeder = target.statusSources["leech-seed"] || null;
+
+                if (seeder.isFainted) clearStatus(target, "leech-seed");
+
+                const maxHp = target.defaultStats.hp;
+
+                // 1/8 of max HP
+                const drainFrac = 1 / 8;
+                const rawDrain = Math.floor(maxHp * drainFrac);
+                const drain = Math.max(1, rawDrain);
+
+                const drainDamage = Math.min(drain, target.stats.hp);
+
+                // Apply damage to the seeded target
+                target.stats.hp = clamp(
+                    target.stats.hp - drainDamage,
+                    0,
+                    target.defaultStats.hp
+                );
+
+                result.damage += drainDamage;
+                result.messages.push(
+                    `${target.name}'s health is sapped by Leech Seed!`
+                );
+
+                // Seeder effects
+                let healAmount = drainDamage;
+
+                // Heal the seeder
+                seeder.stats.hp = clamp(
+                    seeder.stats.hp + healAmount,
+                    0,
+                    seeder.defaultStats.hp
+                );
+
+                // result.messages.push(
+                //     `${seeder.name} absorbed health from Leech Seed!`
+                // );
+
+            }
+        }
     }
 };
 

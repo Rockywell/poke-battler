@@ -254,8 +254,11 @@ export default class Move {
         return Math.floor(damage * this.meta?.drain / 100);
     }
 
-    applyAilment(target, effects, ailment = this.ailment) {
+    applyAilment(user, target, effects, ailment = this.ailment) {
         // If Pokémon implements applyStatus, use that, otherwise just set status
+
+        target.statusSources ??= {};
+        target.statusSources[ailment] = user;
 
         if (PRIMARY_STATUSES.has(ailment)) {
             if (typeof target.applyStatus === "function") {
@@ -353,14 +356,14 @@ export default class Move {
         }
 
         // 3. Primary ailment
-        if (this.rollAilment()) this.applyAilment(target, result.secondaryEffects);
+        if (this.rollAilment()) this.applyAilment(user, target, result.secondaryEffects);
         // 4. Stat changes
         if (this.changesStats) {
             let statTarget = this.category.includes("raise") ? user : target;
             this.applyStatChanges(statTarget, result.secondaryEffects);
         }
         // 5. Flinch flinchChance
-        if (this.rollFlinch()) this.applyAilment(target, result.secondaryEffects, "flinch");
+        if (this.rollFlinch()) this.applyAilment(user, target, result.secondaryEffects, "flinch");
 
 
 

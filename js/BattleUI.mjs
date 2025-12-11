@@ -259,6 +259,13 @@ export default class BattleUI {
 
         let statusAnimation = playAnimationOnce(inflictedSprite, "status");
 
+        if (inflicted.volatileStatuses.has("leech-seed")) {
+            const sourceCard = inflictedCard === this.playerCard ? this.opponentCard : this.playerCard;
+            const sourceHpBar = sourceCard.querySelector(".hp-bar");
+
+            this.updateHp(inflicted.statusSources["leech-seed"], sourceHpBar);
+        }
+
         this.updateHp(inflicted, inflictedHpBar);
         this.updateTitle(inflicted, inflictedTitle);
 

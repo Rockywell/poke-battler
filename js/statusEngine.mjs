@@ -23,6 +23,8 @@ export const VOLATILE_STATUSES = new Set([
 function clearStatus(target, statusName) {
     const statusClass = STATUS_DEFS[statusName].kind;
 
+    delete target.statusCounters?.[statusName];
+
     if (statusClass == "primary") {
         target.status = "none"// null;
     }

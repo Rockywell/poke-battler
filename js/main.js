@@ -44,7 +44,6 @@ const controller = new BattleController(
 );
 
 await trainers;
-
 controller.init();
 
 PokeApi.saveCaches();
